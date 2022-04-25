@@ -5,6 +5,7 @@ import os
 from tqdm import tqdm
 import utils
 import warnings
+from list_names import simplified_names
 
 warnings.filterwarnings('ignore')
 
@@ -27,18 +28,21 @@ def main():
     # imp -> Import
     type_file = {
         0: 'exp',
-        2: 'imp'
+        1: 'imp'
     }
     # This function reads the content.dat file, which is an html,
     # fetches the tables according to the segment and cleans up unnecessary column names.
 
     def parse_tables():
         for seg in segments:
-            for i in range(0, 4, 2):
+            for i in range(0, 2):
                 # name formatting
                 file_name = utils.slug(f'{type_file[i]}-mensal-{seg.split("-")[1]}')
                 # Parse tables
                 table = pd.read_html('datasets/content_page.dat', match=seg, decimal=',', thousands='.')[i]
+                # Simplified and clean
+                utils.simplified_names(table, simplified_names)
+                table.iloc[1:, 0] = table.iloc[1:, 0].apply(utils.clean_text)
                 print(f'Formatting the data and creating the file: {file_name}.csv')
                 # Column treatment
                 for x, columns_old in enumerate(table.columns.levels):
@@ -64,7 +68,7 @@ def main():
         # call the function
         parse_tables()
         # Delete content.dat file
-        os.remove('datasets/content_page.dat')
+        os.remove(f'datasets/content_page.dat')
     else:
         print(f'Requesting error: {response.status_code}')
 

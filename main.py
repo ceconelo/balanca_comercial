@@ -1,11 +1,18 @@
+#!/usr/bin/env python
+
+
 import requests
+from http import HTTPStatus
 import pandas as pd
 import numpy as np
-import os
+import os, sys
 from tqdm import tqdm
 import utils
 import warnings
 from list_names import simplified_names
+from parsel import Selector
+from loguru import logger as log
+import post_tweet
 
 warnings.filterwarnings('ignore')
 
@@ -15,8 +22,46 @@ warnings.filterwarnings('ignore')
 '''
 
 
-def main():
-    url = 'https://balanca.economia.gov.br/balanca/pg_principal_bc/principais_resultados.html'
+def check_last_update(url):
+    response = requests.get(url, headers=utils.get_headers(), verify=False)
+    if response.status_code == HTTPStatus.OK:
+        website_last_update = get_last_update(response.text)
+        last_recorded_update = None
+        try:
+            with open('datasets/last_download.txt', 'r') as f:
+                last_recorded_update = f.readline()
+        except FileNotFoundError as err:
+            log.error(err)
+        finally:
+            if last_recorded_update is not None:
+                last_recorded_update = last_recorded_update.split('-')[1].strip()
+            log.info(f'Last recorded update: {last_recorded_update}')
+            if last_recorded_update == website_last_update:
+                log.info('There are no new updates')
+                sys.exit(os.EX_OK)
+            else:
+                log.info('A new update has been found')
+                processing_request(response)
+                # post tweet
+                post_tweet.post()
+                log.info('Done.')
+
+
+def get_last_update(response):
+    log.info('Checking the latest document update on the website')
+    selector = Selector(response)
+    updated = selector.xpath('(//h4[@class="date"]/text())[1]').get().strip()
+    log.info(f'Last update: {updated}')
+    return str(updated)
+
+
+def processing_request(response):
+    log.info('Processing the data found on the website.')
+    parse_tables(response)
+    save_current_update_info(response)
+
+
+def parse_tables(response):
     # Defining which data segments we are interested in
     # As there are many tables on the site, we will use these segments as a filter
     segments = [
@@ -30,47 +75,50 @@ def main():
         0: 'exp',
         1: 'imp'
     }
-    # This function reads the content.dat file, which is an html,
-    # fetches the tables according to the segment and cleans up unnecessary column names.
+    # table_MN = pd.read_html('datasets/content_page.dat', match='B - Indústria Extrativa')
+    # print(f'Total tables: {len(table_MN)}')
 
-    def parse_tables():
-        for seg in segments:
-            for i in range(0, 2):
-                # name formatting
-                file_name = utils.slug(f'{type_file[i]}-mensal-{seg.split("-")[1]}')
-                # Parse tables
-                table = pd.read_html('datasets/content_page.dat', match=seg, decimal=',', thousands='.')[i]
-                # Simplified and clean
-                utils.simplified_names(table, simplified_names)
-                table.iloc[1:, 0] = table.iloc[1:, 0].apply(utils.clean_text)
-                print(f'Formatting the data and creating the file: {file_name}.csv')
-                # Column treatment
-                for x, columns_old in enumerate(table.columns.levels):
-                    columns_new = np.where(columns_old.str.contains('Unnamed'), '', columns_old)
-                    table.rename(columns=dict(zip(columns_old, columns_new)), level=x, inplace=True)
-                # Saving the file
-                table.to_csv(f'datasets/{file_name}.csv', encoding='utf-8-sig')
-                print('Saved successfully.')
-                print('---------------------------')
+    # This function reads the content.dat file, which is a html,
+    # fetches the tables according to the segment and cleans up unnecessary column names.
+    for seg in segments:
+        for i in range(0, 2, 1):  # 0, 4, 2
+            log.info(f'seg:{seg} range:{i}')
+            # name formatting
+            file_name = utils.slug(f'{type_file[i]}-mensal-{seg.split("-")[1]}')
+            # Parse tables
+            table = pd.read_html(response.content, match=seg, decimal=',', thousands='.')[i]
+            # Simplified and clean
+            utils.simplified_names(table, simplified_names)
+            table.iloc[1:, 0] = table.iloc[1:, 0].apply(utils.clean_text)
+            log.info(f'Formatting the data and creating the file: {file_name}.csv')
+            # Column treatment
+            for x, columns_old in enumerate(table.columns.levels):
+                columns_new = np.where(columns_old.str.contains('Unnamed'), '', columns_old)
+                table.rename(columns=dict(zip(columns_old, columns_new)), level=x, inplace=True)
+            # Saving the file
+            table.to_csv(f'datasets/{file_name}.csv', encoding='utf-8-sig')
+            log.info('Saved successfully.')
+
+
+def save_current_update_info(response):
+    log.info('Saving current release date')
+    selector = Selector(response.text)
+    updated = selector.xpath('(//h4[@class="date"]/text())[1]').get().strip()
+    reference_date = selector.xpath('(//p[@align="center"]/text())[1]').get().strip()
+
+    try:
+        with open('datasets/last_download.txt', 'w') as f:
+            f.write(f'{reference_date} - {updated}')
+        log.info('Done.')
+    except:
+        log.error('An error occurred while trying to save the current release date to the file.')
+
+
+def main():
+    log.info('Starting...')
     # Request for the page that stores the data we want.
-    response = requests.get(url, headers=utils.get_headers(), verify=False)
-    # We save the page content in the content.dat file
-    if response.status_code == 200:
-        total_size_in_bytes = int(response.headers.get('content-length', 0))
-        block_size = 1024
-        progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True, desc="Downloading page.")
-        # Creating the temporary content.dat file
-        with open('datasets/content_page.dat', 'wb') as file:
-            for data in response.iter_content(block_size):
-                progress_bar.update(len(data))
-                file.write(data)
-        progress_bar.close()
-        # call the function
-        parse_tables()
-        # Delete content.dat file
-        os.remove(f'datasets/content_page.dat')
-    else:
-        print(f'Requesting error: {response.status_code}')
+    url = 'https://balanca.economia.gov.br/balanca/pg_principal_bc/principais_resultados.html'
+    check_last_update(url)
 
 
 if __name__ == '__main__':

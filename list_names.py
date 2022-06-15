@@ -16,5 +16,10 @@ simplified_names = {
     'Válvulas e tubos': 'Válvulas e tubos',
     'organo-inorgânicos': 'Compostos organo-inorgânicos',
     'Motores e máquinas': 'Motores e máquinas não elétricos',
-    'Inseticidas': 'Inseticidas e outros'
+    'Inseticidas': 'Inseticidas e outros',
+    'Equipamentos de telecomunicações': 'Equipamentos de telecomunicações',
+    'Carvão, mesmo em pó, mas não aglomerado': 'Carvão',
+    'Óleos brutos de petróleo': 'Óleos brutos de petróleo',
+    'Outros minérios e concentrados dos metais de base': 'Outros minérios',
+    'Gorduras e óleos vegetais': 'Gorduras e óleos vegetais'
 }

@@ -1,0 +1,13 @@
+[Unit]
+Description=comex_semanal
+After=network.target
+
+[Service]
+User=drakon
+WorkingDirectory=/home/drakon/Documents/PROJETOS/comex-brasil-semanal
+ExecStart=/home/drakon/Documents/PROJETOS/comex-brasil-semanal/venv/bin/python /home/drakon/Documents/PROJETOS/comex-brasil-semanal/main.py
+Restart=on-failure
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
